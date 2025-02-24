@@ -19,7 +19,7 @@ void checkMoistureLevel();
 
 // Konfigurasi WiFi
 const char* ssid = "Bluehouse";
-const char* password = "Ripple0808?x";
+const char* password = "Ripple0808?";
 
 // Konfigurasi DHT22
 #define DHTPIN D1  // Pin D1 (GPIO5)
@@ -45,8 +45,8 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", 25200); // GMT+7
 // Timing Variables
 unsigned long lastDataSend = 0;
 unsigned long lastModeCheck = 0;
-const long dataInterval = 10000; // 10 detik
-const long modeInterval = 5000;  // 5 detik
+const long dataInterval = 10000;
+const long modeInterval = 5000;
 
 // Relay Control
 unsigned long relayStartTime = 0;
@@ -95,11 +95,6 @@ void loop() {
   if (currentMillis - lastModeCheck >= modeInterval) {
     lastModeCheck = currentMillis;
     checkMode();
-  }
-
-  // Kontrol Relay
-  if (activeRelay != -1 && currentMillis - relayStartTime >= 60000) { // 60 detik
-    deactivateRelay(activeRelay);
   }
 
   // Penjadwalan Timebased
@@ -203,15 +198,21 @@ void checkMode() {
 }
 
 void checkWateringSchedule() {
+  int moisture = analogRead(SOIL_SENSOR_PIN);
+  int percentageMoisture = map(moisture, 0, 1023, 100, 0);
+  Serial.println("Kelembapan Tanah: " + String(percentageMoisture));
+  int limitMoisture = 45;
   int currentHour = timeClient.getHours();
   int currentMinute = timeClient.getMinutes();
-  
-  if (checkTime(firstTime, currentHour, currentMinute)) {
-    triggerRelay(RELAY_PIN);
-  }
-  
-  if (checkTime(secondTime, currentHour, currentMinute)) {
-    triggerRelay(RELAY_PIN);
+
+  // Cek apakah waktu sekarang sesuai dengan jadwal dan kelembapan tanah rendah
+  if ((checkTime(firstTime, currentHour, currentMinute) || checkTime(secondTime, currentHour, currentMinute)) 
+      && percentageMoisture < limitMoisture) {
+    if (activeRelay == -1) {
+      triggerRelay(RELAY_PIN);
+    }
+  } else if (activeRelay != -1) {
+    deactivateRelay(RELAY_PIN);
   }
 }
 
@@ -242,9 +243,12 @@ void checkMoistureLevel() {
   Serial.println("Kelembapan Tanah: " + String(percentageMoisture));
   int limitMoisture = 45;
 
-  if (percentageMoisture < limitMoisture && activeRelay == -1) {
-    triggerRelay(RELAY_PIN);
-  } else if (percentageMoisture >= limitMoisture && activeRelay != -1) {
+  // Pastikan pompa hanya menyala jika mode threshold aktif dan kelembapan di bawah batas
+  if (pumpMode == "threshold" && percentageMoisture < limitMoisture) {
+    if (activeRelay == -1) {
+      triggerRelay(RELAY_PIN);
+    }
+  } else if (activeRelay != -1) {
     deactivateRelay(RELAY_PIN);
   }
 }
